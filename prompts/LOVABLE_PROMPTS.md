@@ -88,3 +88,48 @@ Also output the SQL snippets for:
 - CREATE TABLE products…
 - ALTER TABLE … ENABLE ROW LEVEL SECURITY;
 - CREATE POLICY "read products" ON products FOR SELECT USING (true);
+
+---
+
+## Prompt — Edge Function: Backfill Missing Embeddings (OpenAI + pgvector)
+
+You are updating the project "AI-Semantic-Product-Search".
+
+Goal:
+Create a Supabase Edge Function that finds rows in `products` where `embedding IS NULL`, generates embeddings with OpenAI (`text-embedding-3-small`, 1536 dims), and updates the `embedding` column. This is a one-off (can be re-run) backfill tool.
+
+Scope & Deliverables:
+
+1) Edge Function:
+   - Path: supabase/functions/backfill_embeddings/index.ts
+   - Runtime: Deno/TypeScript
+   - Behavior:
+     - Method: POST (no body required, optional batch_size param)
+     - Fetch rows from `products` where `embedding IS NULL`, in batches (default 50, clamp 1..200).
+     - For each row, embed the `name` field via OpenAI embeddings API (model `text-embedding-3-small`).
+     - Update `products.embedding` with the returned vector.
+     - Retry transient failures with exponential backoff.
+     - Return JSON summary: { scanned, embedded, skipped, batch_size }
+     - Include console logging for progress.
+
+   - Env vars (read from secrets):
+     - SUPABASE_URL
+     - SUPABASE_SERVICE_ROLE_KEY
+     - OPENAI_API_KEY
+
+   - Implementation notes:
+     - Use the official Supabase JS client for Deno.
+     - Use fetch to call OpenAI: POST https://api.openai.com/v1/embeddings with headers:
+       Authorization: Bearer ${OPENAI_API_KEY}; Content-Type: application/json
+       body: { "input": "<name>", "model": "text-embedding-3-small" }
+     - Ensure we never expose the service role key or OPENAI_API_KEY to the client.
+     - Handle CORS for POST from localhost and Vercel previews (for convenience).
+
+2) Prompt log:
+   - Append this entire prompt (verbatim) to the end of `LOVABLE_PROMPTS.md` under a new header:
+     ## Prompt — Edge Function: Backfill Missing Embeddings (OpenAI + pgvector)
+
+Acceptance Criteria:
+- Edge Function compiles and deploys.
+- With existing rows where `embedding IS NULL`, it populates embeddings.
+- No secrets are exposed to the frontend.

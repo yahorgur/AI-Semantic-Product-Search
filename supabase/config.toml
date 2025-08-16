@@ -2,3 +2,6 @@ project_id = "mvfhcykdmzuwcmgussar"
 
 [functions.search]
 verify_jwt = false
+
+[functions.backfill_embeddings]
+verify_jwt = false
