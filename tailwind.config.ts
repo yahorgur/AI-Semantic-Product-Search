@@ -52,6 +52,14 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				grocery: {
+					green: 'hsl(var(--grocery-green))',
+					'green-light': 'hsl(var(--grocery-green-light))',
+					'green-dark': 'hsl(var(--grocery-green-dark))',
+					accent: 'hsl(var(--grocery-accent))',
+					surface: 'hsl(var(--grocery-surface))',
+					'surface-hover': 'hsl(var(--grocery-surface-hover))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
