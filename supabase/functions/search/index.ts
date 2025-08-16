@@ -1,95 +1,113 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const corsHeaders: HeadersInit = {
+  "Access-Control-Allow-Origin": "*", // Demo: allow all origins (localhost, Vercel previews, etc.)
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
+};
 
-// Mock grocery data for demonstration
-const groceryItems = [
-  { id: 1, name: "Whole Milk", price_cents: 349 },
-  { id: 2, name: "2% Milk", price_cents: 329 },
-  { id: 3, name: "Almond Milk", price_cents: 449 },
-  { id: 4, name: "Oat Milk", price_cents: 499 },
-  { id: 5, name: "Pasta - Penne", price_cents: 199 },
-  { id: 6, name: "Pasta - Spaghetti", price_cents: 189 },
-  { id: 7, name: "Pasta - Fusilli", price_cents: 209 },
-  { id: 8, name: "Pasta Sauce - Marinara", price_cents: 249 },
-  { id: 9, name: "Fresh Bread", price_cents: 299 },
-  { id: 10, name: "Whole Wheat Bread", price_cents: 329 },
-  { id: 11, name: "Bananas", price_cents: 129 },
-  { id: 12, name: "Apples - Gala", price_cents: 199 },
-  { id: 13, name: "Orange Juice", price_cents: 399 },
-  { id: 14, name: "Greek Yogurt", price_cents: 549 },
-  { id: 15, name: "Cheddar Cheese", price_cents: 449 },
-  { id: 16, name: "Chicken Breast", price_cents: 699 },
-  { id: 17, name: "Ground Beef", price_cents: 599 },
-  { id: 18, name: "Salmon Fillet", price_cents: 899 },
-  { id: 19, name: "Rice - Jasmine", price_cents: 329 },
-  { id: 20, name: "Olive Oil", price_cents: 799 },
-  { id: 21, name: "Eggs - Dozen", price_cents: 279 },
-  { id: 22, name: "Butter", price_cents: 429 },
-  { id: 23, name: "Cereal - Cheerios", price_cents: 549 },
-  { id: 24, name: "Coffee Beans", price_cents: 1299 },
-  { id: 25, name: "Green Tea", price_cents: 399 }
-];
-
-serve(async (req) => {
+serve(async (req: Request) => {
   // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    if (req.method !== 'POST') {
+    if (req.method !== "POST") {
       return new Response(
-        JSON.stringify({ error: 'Method not allowed' }),
-        { 
-          status: 405, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: "Method not allowed" }),
+        { status: 405, headers: corsHeaders },
       );
     }
 
-    const { q: query, limit = 10 } = await req.json();
-
-    if (!query || typeof query !== 'string') {
+    // Parse body
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch (_) {
       return new Response(
-        JSON.stringify({ error: 'Query parameter "q" is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: "invalid JSON body" }),
+        { status: 400, headers: corsHeaders },
       );
     }
 
-    console.log(`Searching for: "${query}" with limit: ${limit}`);
+    const { q, limit } = (body ?? {}) as { q?: unknown; limit?: unknown };
 
-    // Filter items based on query (case-insensitive)
-    const results = groceryItems
-      .filter(item => 
-        item.name.toLowerCase().includes(query.toLowerCase())
-      )
-      .slice(0, Math.min(limit, 50)); // Cap at 50 results
+    if (typeof q !== "string" || q.trim().length < 2) {
+      return new Response(
+        JSON.stringify({ error: "query too short" }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
 
-    console.log(`Found ${results.length} results`);
+    // Validate and clamp limit
+    const DEFAULT_LIMIT = 20;
+    const MAX_LIMIT = 50;
+    const MIN_LIMIT = 1;
+    let parsedLimit = DEFAULT_LIMIT;
+
+    if (typeof limit === "number" && Number.isFinite(limit)) {
+      parsedLimit = Math.trunc(limit);
+    } else if (typeof limit === "string") {
+      const num = Number(limit);
+      if (Number.isFinite(num)) parsedLimit = Math.trunc(num);
+    }
+
+    const finalLimit = Math.min(Math.max(parsedLimit || DEFAULT_LIMIT, MIN_LIMIT), MAX_LIMIT);
+
+    // Initialize Supabase client with service role key (server-only)
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars");
+      return new Response(
+        JSON.stringify({ error: "server misconfiguration" }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Perform case-insensitive search on products
+    const query = q.trim();
+    console.log(`Searching products: "${query}" limit=${finalLimit}`);
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, price_cents")
+      .ilike("name", `%${query}%`)
+      .order("name", { ascending: true })
+      .limit(finalLimit);
+
+    if (error) {
+      console.error("DB error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    const results = (data ?? []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      price_cents: row.price_cents ?? null,
+    }));
 
     return new Response(
       JSON.stringify({ results }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { headers: corsHeaders },
     );
-
-  } catch (error) {
-    console.error('Search function error:', error);
-    
+  } catch (e) {
+    console.error("Search function error:", e);
+    const message = e instanceof Error ? e.message : "Internal server error";
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ error: message }),
+      { status: 500, headers: corsHeaders },
     );
   }
 });
