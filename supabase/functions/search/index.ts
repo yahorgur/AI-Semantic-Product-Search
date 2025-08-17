@@ -73,16 +73,58 @@ serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Perform case-insensitive search on products
+    // Generate embedding for the query using OpenAI
     const query = q.trim();
-    console.log(`Searching products: "${query}" limit=${finalLimit}`);
+    console.log(`Semantic search for: "${query}" limit=${finalLimit}`);
 
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, name, price_cents")
-      .ilike("name", `%${query}%`)
-      .order("name", { ascending: true })
-      .limit(finalLimit);
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) {
+      console.error("Missing OPENAI_API_KEY env var");
+      return new Response(
+        JSON.stringify({ error: "server misconfiguration" }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    // Generate embedding for the query
+    let queryEmbedding: number[];
+    try {
+      const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: query,
+          model: "text-embedding-3-small",
+        }),
+      });
+
+      if (!embeddingResponse.ok) {
+        const errorText = await embeddingResponse.text();
+        console.error("OpenAI embedding error:", errorText);
+        return new Response(
+          JSON.stringify({ error: "embedding generation failed" }),
+          { status: 500, headers: corsHeaders },
+        );
+      }
+
+      const embeddingData = await embeddingResponse.json();
+      queryEmbedding = embeddingData.data[0].embedding;
+    } catch (e) {
+      console.error("OpenAI embedding request failed:", e);
+      return new Response(
+        JSON.stringify({ error: "embedding generation failed" }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    // Perform vector similarity search using RPC
+    const { data, error } = await supabase.rpc("search_products_by_vector", {
+      q_emb: queryEmbedding,
+      limit_n: finalLimit,
+    });
 
     if (error) {
       console.error("DB error:", error);
@@ -96,6 +138,7 @@ serve(async (req: Request) => {
       id: row.id,
       name: row.name,
       price_cents: row.price_cents ?? null,
+      distance: row.distance ?? null,
     }));
 
     return new Response(

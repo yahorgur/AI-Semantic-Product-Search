@@ -1,6 +1,34 @@
 # 🛒 AI Semantic Product Search
 
-A demo web app that showcases **semantic search for supermarket products** using:
+This is a demo web application showcasing AI-powered semantic product search for supermarkets.
+
+## Semantic Search with pgvector
+
+This application uses semantic vector search to find products based on meaning rather than exact text matches. Here's how it works:
+
+### How Semantic Search Works
+
+1. **Embedding Generation**: When you search for "milk", the system generates a 1536-dimensional vector embedding using OpenAI's `text-embedding-3-small` model
+2. **Vector Similarity**: The search compares your query embedding against pre-computed embeddings of all product names using cosine similarity
+3. **Intelligent Results**: Instead of only finding products with "milk" in the name, it can find related items like "Butter", "Cheese", "Yogurt" based on semantic similarity
+
+### Benefits Over Traditional Search
+
+- **Semantic Understanding**: Searching "dairy" returns milk, cheese, butter, yogurt
+- **Typo Tolerance**: Misspellings often still return correct results  
+- **Contextual Matches**: "breakfast items" might return cereals, milk, bread
+- **Multilingual Potential**: Can work across languages (with proper training data)
+
+### Technical Implementation
+
+The search flow:
+1. User types query → Frontend sends to Edge Function
+2. Edge Function generates embedding using OpenAI API
+3. Supabase RPC function `search_products_by_vector()` performs vector similarity search
+4. Results ranked by semantic similarity (lower distance = more similar)
+5. Frontend displays products with similarity scores
+
+This approach provides a much more intuitive and powerful search experience compared to traditional text-based matching.
 
 - **Supabase Postgres + pgvector** (vector database)
 - **OpenAI embeddings** for semantic meaning
@@ -18,13 +46,12 @@ For example:
 ---
 
 ## ✨ Features
-- 🔍 **Vector search** with pgvector (semantic similarity)  
-- 🛠 **Supabase Edge Function** handles queries + embeddings  
-- 📦 **Seeded supermarket dataset** (~40 items like milk, pasta, chocolate)  
-- 🎨 **Next.js + Tailwind** frontend with simple UI:
-  - Input box
-  - Loading & error states
-  - Result list with product names & prices  
+
+- **Semantic Vector Search**: Uses pgvector with OpenAI embeddings for intelligent product matching
+- **Supabase Edge Function**: Handles queries and generates embeddings using OpenAI text-embedding-3-small
+- **Seeded Dataset**: ~40 supermarket products ready to search
+- **Next.js + Tailwind**: Simple UI with input, loading/error states, and results
+- **Real-time Results**: Debounced search with instant semantic feedback
 
 ---
 

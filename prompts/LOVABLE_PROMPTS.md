@@ -91,6 +91,73 @@ Also output the SQL snippets for:
 
 ---
 
+## Prompt — Switch Product Search to Vector Search (pgvector)
+
+You are updating the project "AI-Semantic-Product-Search".
+
+Goal:
+Replace the current SQL ILIKE search with a pgvector semantic search using the `products.embedding` column.
+
+Scope & Deliverables:
+1. Backend / Edge Function
+   - File: supabase/functions/search/index.ts (or wherever the search logic lives).
+   - Change query so that instead of `where name ilike ...`, it:
+     - Generates an embedding for the incoming query string with OpenAI (model: "text-embedding-3-small", dim=1536).
+     - Calls the existing RPC function `search_products_by_vector(q_emb, limit_n)` to retrieve results ordered by vector similarity.
+   - Handle errors gracefully (bad input, OpenAI failure).
+   - Config:
+     - Uses `OPENAI_API_KEY` from secrets.
+     - Batch size defaults to 20.
+   - Response format remains: `{ results: [ { id, name, price_cents, distance } ] }`.
+
+2. SQL / RPC
+   - Ensure RPC exists (create if missing):
+     ```sql
+     create or replace function search_products_by_vector(
+       q_emb vector,
+       limit_n int default 20
+     )
+     returns table (
+       id bigint,
+       name text,
+       price_cents int,
+       distance double precision
+     )
+     language sql
+     security definer
+     as $$
+       select id, name, price_cents,
+              (embedding <-> q_emb) as distance
+       from products
+       where embedding is not null
+       order by embedding <-> q_emb
+       limit limit_n;
+     $$;
+
+     grant execute on function search_products_by_vector(vector, int) to anon, authenticated;
+     ```
+
+3. Frontend
+   - No UI changes: the `<input>` still lets the user type a product name.
+   - When user submits:
+     - The request hits the Edge Function with `{ "q": "milk", "limit": 10 }`.
+     - The response shows the ranked list of products with semantic matches.
+   - Replace "ILIKE search" with "Semantic Vector Search" wording in the UI (small badge or comment).
+
+4. Documentation
+   - Update README.md:
+     - Add a section "Semantic Search with pgvector" explaining how queries now embed the input and match against vectors.
+   - Update LOVABLE_PROMPTS.md:
+     - Append this entire prompt under header:
+       ## Prompt — Switch Product Search to Vector Search (pgvector)
+
+Acceptance Criteria:
+- Submitting "milk" returns related products (e.g. "Whole Milk 1L", "Butter", "Cheese") instead of substring matches only.
+- No more ILIKE queries remain in the code.
+- README and LOVABLE_PROMPTS.md are updated.
+
+---
+
 ## Prompt — Edge Function: Backfill Missing Embeddings (OpenAI + pgvector)
 
 You are updating the project "AI-Semantic-Product-Search".

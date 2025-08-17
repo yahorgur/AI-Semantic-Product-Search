@@ -8,6 +8,7 @@ interface SearchResult {
   id: number;
   name: string;
   price_cents?: number;
+  distance?: number | null;
 }
 
 interface SearchResponse {
@@ -75,6 +76,12 @@ const SearchBox = () => {
           <div className="flex items-center gap-3 mb-4">
             <ShoppingCart className="h-6 w-6 text-grocery-green" />
             <h1 className="text-2xl font-bold text-grocery-green">Grocery Finder</h1>
+          </div>
+          
+          <div className="flex justify-center mb-4">
+            <span className="inline-block bg-primary/10 text-primary text-xs font-semibold px-2 py-1 rounded">
+              Semantic Vector Search
+            </span>
           </div>
           
           <div className="relative">
